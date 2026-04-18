@@ -13,3 +13,5 @@ plugins {
 }
 
 rootProject.name = 'LoaderBridge'
+include 'bridge-core'
+include 'bridge-test-harness'

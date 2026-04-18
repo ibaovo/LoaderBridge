@@ -1,0 +1,4 @@
+# 项目忽略路径
+/.gradle/
+build/
+/.idea/
