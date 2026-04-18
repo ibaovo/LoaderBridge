@@ -87,6 +87,33 @@ for (PlaceholderDefinition definition : definitions) {
 
 这里的 `source == MIRRORED_PAPI` 表示这个定义来自 PlaceholderAPI 的镜像数据。
 
+### 4. 每秒变化一次的占位符
+
+如果你想让某个占位符每秒变化一次，正确做法不是每秒重新 `register()`，而是：
+
+1. 只注册一次占位符。
+2. 把变化中的值放到一个缓存里。
+3. 用定时任务或者服务端 tick 每秒更新这个缓存。
+4. `resolver` 每次被调用时，直接读取当前缓存值。
+
+示例里的写法是：
+
+```java
+PlaceholderRegistrationResult result = PlaceholderBridge.register("examplemod", "uptime", context -> {
+    return currentUptimeText.get();
+});
+```
+
+然后每秒更新 `currentUptimeText`：
+
+```java
+currentUptimeText.set("服务端已运行 " + seconds + " 秒");
+```
+
+这样 PAPI 每次解析 `%examplemod_uptime%` 时，拿到的都是最新值。
+
+如果你的值依赖的是 Minecraft 世界、玩家、经济系统这些游戏内状态，建议把“每秒更新缓存”的逻辑放到服务端 tick 或你自己的服务器任务里，而不是直接开一个后台线程去读游戏对象。
+
 ## 实际使用建议
 
 - 你的 mod 只要依赖 `LoaderBridge` 的核心 API 即可。

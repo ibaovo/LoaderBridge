@@ -8,6 +8,11 @@ import cn.ibax.loaderbridge.placeholder.PlaceholderSource;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 
 /**
@@ -27,6 +32,34 @@ public final class ExternalModPlaceholderExample {
     private static final String MODID = "examplemod";
 
     private static final Logger LOGGER = Logger.getLogger(ExternalModPlaceholderExample.class.getName());
+
+    /**
+     * 每秒变化的占位符示例缓存。
+     *
+     * 重点不是“每秒重新注册占位符”，而是“注册一次，然后让 resolver 每次读取最新缓存值”。
+     */
+    private static final AtomicReference<String> DYNAMIC_UPTIME_TEXT = new AtomicReference<>("服务端已启动，正在等待第一秒...");
+
+    /**
+     * 这个计数器只是示例用途，用来展示“值可以每秒变化”。
+     * 如果你的值依赖玩家、世界、数据库或经济系统，也可以在这里替换成自己的业务状态。
+     */
+    private static final AtomicInteger DYNAMIC_UPTIME_SECONDS = new AtomicInteger();
+
+    /**
+     * 防止同一个 mod 生命周期里重复启动定时器。
+     */
+    private static volatile boolean dynamicUpdaterStarted;
+
+    /**
+     * JDK 线程池只负责演示“每秒更新一次缓存”的思路。
+     * 如果你的值依赖 Minecraft 世界状态，建议改成服务端 tick 事件或者你自己的服务器任务调度器。
+     */
+    private static final ScheduledExecutorService DYNAMIC_UPDATER = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "LoaderBridge-PAPI-Dynamic-Updater");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     /**
      * 避免同一个启动流程里重复注册。
@@ -57,6 +90,7 @@ public final class ExternalModPlaceholderExample {
 
         registerExplicitNamespacePlaceholders();
         registerAutoNamespacePlaceholder();
+        registerDynamicPlaceholder();
 
         LOGGER.info(() -> "当前可见的占位符命名空间：" + PlaceholderBridge.namespaces());
         LOGGER.info(() -> "当前镜像到 mod 层的 PAPI 占位符：" + listMirroredPapiNames());
@@ -99,6 +133,52 @@ public final class ExternalModPlaceholderExample {
             return "在线";
         });
         logRegistration("auto/status", status);
+    }
+
+    /**
+     * 每秒变化一次的占位符示例。
+     *
+     * 这类占位符不要每秒重复 register。
+     * 正确做法是：
+     * 1. 只注册一次
+     * 2. 用后台任务每秒更新一个缓存值
+     * 3. resolver 每次解析时直接读取这个缓存值
+     *
+     * 对外最终可以这样使用：
+     * - `%examplemod_uptime%`
+     */
+    public static void registerDynamicPlaceholder() {
+        PlaceholderRegistrationResult uptime = PlaceholderBridge.register(MODID, "uptime", context -> DYNAMIC_UPTIME_TEXT.get());
+        logRegistration("dynamic/uptime", uptime);
+
+        startDynamicPlaceholderUpdater();
+    }
+
+    /**
+     * 启动每秒更新缓存的后台任务。
+     *
+     * 如果你要把这段代码复制到真实 mod 里，记得在服务器停止时调用 {@link #shutdownDynamicPlaceholderUpdater()}，
+     * 这样可以避免测试服或者热重载环境里留下后台线程。
+     */
+    public static synchronized void startDynamicPlaceholderUpdater() {
+        if (dynamicUpdaterStarted) {
+            return;
+        }
+
+        dynamicUpdaterStarted = true;
+        DYNAMIC_UPDATER.scheduleAtFixedRate(() -> {
+            int seconds = DYNAMIC_UPTIME_SECONDS.incrementAndGet();
+            DYNAMIC_UPTIME_TEXT.set("服务端已运行 " + seconds + " 秒");
+        }, 0L, 1L, TimeUnit.SECONDS);
+    }
+
+    /**
+     * 停止动态占位符后台任务。
+     *
+     * 真实项目里建议在服务器停止事件里调用这个方法。
+     */
+    public static void shutdownDynamicPlaceholderUpdater() {
+        DYNAMIC_UPDATER.shutdownNow();
     }
 
     /**
