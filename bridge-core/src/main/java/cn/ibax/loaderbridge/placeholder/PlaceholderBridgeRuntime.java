@@ -111,7 +111,7 @@ public class PlaceholderBridgeRuntime {
                 List.of(path.trim()),
                 PlaceholderSource.LOCAL
         );
-        mirrorLocalNamespaceIfNeeded(normalizedNamespace, resolver);
+        mirrorLocalNamespaceIfNeeded(normalizedNamespace);
         return result;
     }
 
@@ -147,7 +147,7 @@ public class PlaceholderBridgeRuntime {
                 List.of(),
                 PlaceholderSource.LOCAL
         );
-        mirrorLocalNamespaceIfNeeded(normalizedNamespace, resolver);
+        mirrorLocalNamespaceIfNeeded(normalizedNamespace);
         return result;
     }
 
@@ -166,14 +166,20 @@ public class PlaceholderBridgeRuntime {
         return registry.render(input, context);
     }
 
-    private void mirrorLocalNamespaceIfNeeded(final String namespace, final PlaceholderResolver resolver) {
+    private void mirrorLocalNamespaceIfNeeded(final String namespace) {
         if (placeholderApiAdapter == null || mirroredLocalNamespaces.contains(namespace)) {
             return;
         }
 
+        PlaceholderResolver namespaceResolver = context -> registry.resolve(
+                namespace,
+                context.parameters(),
+                context
+        ).orElse(null);
+
         PlaceholderRegistrationResult mirrorResult = placeholderApiAdapter.mirrorNamespace(
                 namespace,
-                resolver,
+                namespaceResolver,
                 () -> registry.placeholdersForNamespace(namespace)
         );
         if (mirrorResult.registered()) {
